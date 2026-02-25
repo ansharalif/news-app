@@ -1,7 +1,6 @@
 import streamlit as st
 from newspaper import Article
 from transformers import pipeline
-import time
 
 # Page Configuration
 st.set_page_config(page_title="5-Article Summary Tool", layout="centered")
@@ -13,8 +12,8 @@ def load_model():
 
 try:
     summarizer = load_model()
-except:
-    st.error("Error loading AI model. Please refresh and try again.")
+except Exception as e:
+    st.error(f"Error loading AI model: {e}")
     st.stop()
 
 def get_article_text(url):
@@ -23,7 +22,7 @@ def get_article_text(url):
         article.download()
         article.parse()
         return article.text
-    except:
+    except Exception as e:
         return None
 
 def summarize_text(text):
@@ -35,7 +34,7 @@ def summarize_text(text):
     try:
         summary = summarizer(chunk, max_length=130, min_length=30, do_sample=False)
         return summary[0]['summary_text']
-    except:
+    except Exception as e:
         return text
 
 # --- UI Layout ---
@@ -70,7 +69,6 @@ if st.button("Generate Combined Summary"):
                 st.divider()
                 st.subheader("🧠 Combined Master Summary")
                 
-                # Combine all summaries and summarize again
                 combined = " ".join(all_summaries)
                 final_summary = summarize_text(combined)
                 
