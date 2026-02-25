@@ -1,25 +1,21 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-from transformers import pipeline, AutoModelForSeq2SeqLM, AutoTokenizer
+from transformers import T5ForConditionalGeneration, T5Tokenizer
 
 # Page Configuration
 st.set_page_config(page_title="5-Article Summary Tool", layout="centered")
 
-# Load the Summarization Model with explicit model
+# Load T5 Model (works better on cloud)
 @st.cache_resource
 def load_model():
-    model_name = "sshleifer/distilbart-cnn-12-6"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-    return pipeline(
-        "summarization",
-        model=model,
-        tokenizer=tokenizer
-    )
+    model_name = "t5-small"
+    tokenizer = T5Tokenizer.from_pretrained(model_name, legacy=False)
+    model = T5ForConditionalGeneration.from_pretrained(model_name)
+    return model, tokenizer
 
 try:
-    summarizer = load_model()
+    model, tokenizer = load_model()
 except Exception as e:
     st.error(f"Error loading AI model: {e}")
     st.stop()
@@ -28,14 +24,14 @@ def get_article_text(url):
     """Scrapes text from URL using BeautifulSoup"""
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
         
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Remove script and style elements
+        # Remove unwanted elements
         for script in soup(["script", "style", "nav", "footer", "header", "aside"]):
             script.decompose()
         
@@ -48,7 +44,7 @@ def get_article_text(url):
         return None
 
 def summarize_text(text):
-    """Summarizes text using AI"""
+    """Summarizes text using T5"""
     if not text:
         return ""
     
@@ -56,14 +52,28 @@ def summarize_text(text):
     text = ' '.join(text.split())
     
     # Truncate to avoid token limits
-    chunk = text[:1000]
+    chunk = text[:800]
     
     if len(chunk) < 50:
         return text
     
     try:
-        summary = summarizer(chunk, max_length=130, min_length=30, do_sample=False)
-        return summary[0]['summary_text']
+        # T5 requires "summarize:" prefix
+        input_text = "summarize: " + chunk
+        
+        inputs = tokenizer(input_text, return_tensors="pt", max_length=512, truncation=True)
+        
+        outputs = model.generate(
+            inputs["input_ids"],
+            max_length=150,
+            min_length=30,
+            length_penalty=2.0,
+            num_beams=4,
+            early_stopping=True
+        )
+        
+        summary = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        return summary
     except Exception as e:
         return text
 
