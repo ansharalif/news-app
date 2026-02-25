@@ -1,15 +1,22 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-from transformers import pipeline
+from transformers import pipeline, AutoModelForSeq2SeqLM, AutoTokenizer
 
 # Page Configuration
 st.set_page_config(page_title="5-Article Summary Tool", layout="centered")
 
-# Load the Summarization Model
+# Load the Summarization Model with explicit model
 @st.cache_resource
 def load_model():
-    return pipeline("summarization", model="facebook/bart-large-cnn")
+    model_name = "sshleifer/distilbart-cnn-12-6"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    return pipeline(
+        "summarization",
+        model=model,
+        tokenizer=tokenizer
+    )
 
 try:
     summarizer = load_model()
@@ -21,7 +28,7 @@ def get_article_text(url):
     """Scrapes text from URL using BeautifulSoup"""
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
@@ -29,7 +36,7 @@ def get_article_text(url):
         soup = BeautifulSoup(response.content, 'html.parser')
         
         # Remove script and style elements
-        for script in soup(["script", "style", "nav", "footer", "header"]):
+        for script in soup(["script", "style", "nav", "footer", "header", "aside"]):
             script.decompose()
         
         # Get text from paragraph tags
@@ -44,9 +51,16 @@ def summarize_text(text):
     """Summarizes text using AI"""
     if not text:
         return ""
-    chunk = text[:1500]
+    
+    # Clean up text
+    text = ' '.join(text.split())
+    
+    # Truncate to avoid token limits
+    chunk = text[:1000]
+    
     if len(chunk) < 50:
         return text
+    
     try:
         summary = summarizer(chunk, max_length=130, min_length=30, do_sample=False)
         return summary[0]['summary_text']
